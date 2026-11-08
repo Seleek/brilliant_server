@@ -10,7 +10,8 @@
         "dart_jsonwebtoken",
         "dbcrypt",
         "shelf",
-        "shelf_router"
+        "shelf_router",
+        "sqlite3"
       ],
       "devDependencies": []
     },
@@ -183,6 +184,28 @@
     {
       "name": "term_glyph",
       "version": "1.2.2",
+      "dependencies": []
+    },
+    {
+      "name": "sqlite3",
+      "version": "2.9.4",
+      "dependencies": [
+        "collection",
+        "ffi",
+        "meta",
+        "path",
+        "typed_data",
+        "web"
+      ]
+    },
+    {
+      "name": "web",
+      "version": "1.1.2",
+      "dependencies": []
+    },
+    {
+      "name": "ffi",
+      "version": "2.2.0",
       "dependencies": []
     }
   ],

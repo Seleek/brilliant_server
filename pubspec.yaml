@@ -9,3 +9,4 @@ dependencies:
   shelf_router: ^1.1.4
   dart_jsonwebtoken: ^2.14.0
   dbcrypt: ^2.0.0
+  sqlite3: ^2.4.0

@@ -56,6 +56,12 @@
       "languageVersion": "2.12"
     },
     {
+      "name": "ffi",
+      "rootUri": "file:///C:/Users/Yatzi/AppData/Local/Pub/Cache/hosted/pub.dev/ffi-2.2.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.7"
+    },
+    {
       "name": "fixnum",
       "rootUri": "file:///C:/Users/Yatzi/AppData/Local/Pub/Cache/hosted/pub.dev/fixnum-1.1.1",
       "packageUri": "lib/",
@@ -116,6 +122,12 @@
       "languageVersion": "3.1"
     },
     {
+      "name": "sqlite3",
+      "rootUri": "file:///C:/Users/Yatzi/AppData/Local/Pub/Cache/hosted/pub.dev/sqlite3-2.9.4",
+      "packageUri": "lib/",
+      "languageVersion": "3.5"
+    },
+    {
       "name": "stack_trace",
       "rootUri": "file:///C:/Users/Yatzi/AppData/Local/Pub/Cache/hosted/pub.dev/stack_trace-1.12.2",
       "packageUri": "lib/",
@@ -146,6 +158,12 @@
       "languageVersion": "3.5"
     },
     {
+      "name": "web",
+      "rootUri": "file:///C:/Users/Yatzi/AppData/Local/Pub/Cache/hosted/pub.dev/web-1.1.2",
+      "packageUri": "lib/",
+      "languageVersion": "3.13"
+    },
+    {
       "name": "brilliant_server",
       "rootUri": "../",
       "packageUri": "lib/",
@@ -153,8 +171,6 @@
     }
   ],
   "generator": "pub",
-  "generatorVersion": "3.14.0-95.2.beta",
-  "flutterRoot": "file:///C:/flutter",
-  "flutterVersion": "3.48.0-0.5.pre",
+  "generatorVersion": "3.13.2",
   "pubCache": "file:///C:/Users/Yatzi/AppData/Local/Pub/Cache"
 }
