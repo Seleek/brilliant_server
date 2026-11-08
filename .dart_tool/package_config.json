@@ -110,6 +110,12 @@
       "languageVersion": "3.9"
     },
     {
+      "name": "shelf_cors_headers",
+      "rootUri": "file:///C:/Users/Yatzi/AppData/Local/Pub/Cache/hosted/pub.dev/shelf_cors_headers-0.1.5",
+      "packageUri": "lib/",
+      "languageVersion": "2.12"
+    },
+    {
       "name": "shelf_router",
       "rootUri": "file:///C:/Users/Yatzi/AppData/Local/Pub/Cache/hosted/pub.dev/shelf_router-1.1.5",
       "packageUri": "lib/",

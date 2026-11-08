@@ -10,3 +10,4 @@ dependencies:
   dart_jsonwebtoken: ^2.14.0
   dbcrypt: ^2.0.0
   sqlite3: ^2.4.0
+  shelf_cors_headers: ^0.1.5

@@ -10,10 +10,30 @@
         "dart_jsonwebtoken",
         "dbcrypt",
         "shelf",
+        "shelf_cors_headers",
         "shelf_router",
         "sqlite3"
       ],
       "devDependencies": []
+    },
+    {
+      "name": "shelf_cors_headers",
+      "version": "0.1.5",
+      "dependencies": [
+        "shelf"
+      ]
+    },
+    {
+      "name": "sqlite3",
+      "version": "2.9.4",
+      "dependencies": [
+        "collection",
+        "ffi",
+        "meta",
+        "path",
+        "typed_data",
+        "web"
+      ]
     },
     {
       "name": "dbcrypt",
@@ -54,6 +74,38 @@
       ]
     },
     {
+      "name": "typed_data",
+      "version": "1.4.0",
+      "dependencies": [
+        "collection"
+      ]
+    },
+    {
+      "name": "web",
+      "version": "1.1.2",
+      "dependencies": []
+    },
+    {
+      "name": "path",
+      "version": "1.9.1",
+      "dependencies": []
+    },
+    {
+      "name": "meta",
+      "version": "1.19.0",
+      "dependencies": []
+    },
+    {
+      "name": "ffi",
+      "version": "2.2.0",
+      "dependencies": []
+    },
+    {
+      "name": "collection",
+      "version": "1.19.1",
+      "dependencies": []
+    },
+    {
       "name": "clock",
       "version": "1.1.3",
       "dependencies": []
@@ -67,11 +119,6 @@
         "convert",
         "crypto"
       ]
-    },
-    {
-      "name": "collection",
-      "version": "1.19.1",
-      "dependencies": []
     },
     {
       "name": "convert",
@@ -95,11 +142,6 @@
       "dependencies": []
     },
     {
-      "name": "meta",
-      "version": "1.19.0",
-      "dependencies": []
-    },
-    {
       "name": "http_methods",
       "version": "1.1.1",
       "dependencies": []
@@ -117,11 +159,6 @@
       "dependencies": [
         "path"
       ]
-    },
-    {
-      "name": "path",
-      "version": "1.9.1",
-      "dependencies": []
     },
     {
       "name": "http_parser",
@@ -146,13 +183,6 @@
       "version": "1.0.0",
       "dependencies": [
         "fixnum"
-      ]
-    },
-    {
-      "name": "typed_data",
-      "version": "1.4.0",
-      "dependencies": [
-        "collection"
       ]
     },
     {
@@ -184,28 +214,6 @@
     {
       "name": "term_glyph",
       "version": "1.2.2",
-      "dependencies": []
-    },
-    {
-      "name": "sqlite3",
-      "version": "2.9.4",
-      "dependencies": [
-        "collection",
-        "ffi",
-        "meta",
-        "path",
-        "typed_data",
-        "web"
-      ]
-    },
-    {
-      "name": "web",
-      "version": "1.1.2",
-      "dependencies": []
-    },
-    {
-      "name": "ffi",
-      "version": "2.2.0",
       "dependencies": []
     }
   ],
