@@ -16,6 +16,8 @@ final _salas = <String, _Sala>{};
 final _random = Random.secure();
 
 const _caracteresCodigo = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const _limiteInactividad = Duration(seconds: 60);
+const _tiempoEsperaDesconexion = Duration(minutes: 5);
 
 void printConectados() {
   print('========================================');
@@ -37,11 +39,13 @@ void initDatabase() {
 
 class _JugadorSala {
   final String usuario;
+  DateTime ultimaActividad;
   bool listo = false;
   bool envioRonda = false;
+  bool eliminado = false;
   List<dynamic> tablero = List<dynamic>.filled(49, null);
 
-  _JugadorSala(this.usuario);
+  _JugadorSala(this.usuario, this.ultimaActividad);
 }
 
 class _FinalizacionZona {
@@ -61,8 +65,19 @@ class _Sala {
   List<int> dados = const [];
   final Map<String, _JugadorSala> jugadores = {};
   final Map<String, List<_FinalizacionZona>> finalizacionesPorGrupo = {};
+  String? jugadorDesconectado;
+  DateTime? limitePausa;
+  final Set<String> votosContinuar = {};
+  String? ganador;
 
-  _Sala({required this.codigo, required this.nivel, required this.anfitrion});
+  _Sala({
+    required this.codigo,
+    required this.nivel,
+    required this.anfitrion,
+    required DateTime ahora,
+  }) {
+    jugadores[anfitrion] = _JugadorSala(anfitrion, ahora);
+  }
 }
 
 class _Zona {
@@ -159,13 +174,21 @@ String _nuevoCodigoSala() {
   throw StateError('No se pudo generar un código de sala único');
 }
 
-Map<String, dynamic> _salaJson(_Sala sala, String usuario) {
+Map<String, dynamic> _salaJson(
+  _Sala sala,
+  String usuario, {
+  required DateTime ahora,
+}) {
   final jugadores = sala.jugadores.values
       .map((jugador) => {
             'username': jugador.usuario,
             'ready': jugador.listo,
             'submitted': jugador.envioRonda,
             'score': _puntajeJugador(sala, jugador.usuario),
+            'connected': !jugador.eliminado &&
+                ahora.difference(jugador.ultimaActividad) < _limiteInactividad,
+            'eliminated': jugador.eliminado,
+            'votedToContinue': sala.votosContinuar.contains(jugador.usuario),
           })
       .toList();
   return {
@@ -178,14 +201,90 @@ Map<String, dynamic> _salaJson(_Sala sala, String usuario) {
     'players': jugadores,
     'allReady': sala.jugadores.isNotEmpty &&
         sala.jugadores.values.every((jugador) => jugador.listo),
-    'allSubmitted': sala.jugadores.isNotEmpty &&
-        sala.jugadores.values.every((jugador) => jugador.envioRonda),
+    'allSubmitted': _jugadoresActivos(sala).isNotEmpty &&
+        _jugadoresActivos(sala).every((jugador) => jugador.envioRonda),
+    'paused': sala.jugadorDesconectado != null,
+    'disconnectedUsername': sala.jugadorDesconectado,
+    'pauseDeadline': sala.limitePausa?.toIso8601String(),
+    'winner': sala.ganador,
     'cells': sala.jugadores[usuario]?.tablero,
     'scores': {
       for (final jugador in sala.jugadores.values)
         jugador.usuario: _puntajeJugador(sala, jugador.usuario),
     },
   };
+}
+
+List<_JugadorSala> _jugadoresActivos(_Sala sala) =>
+    sala.jugadores.values.where((jugador) => !jugador.eliminado).toList();
+
+List<_JugadorSala> _votantesActivos(_Sala sala, DateTime ahora) =>
+    sala.jugadores.values
+        .where(
+          (jugador) =>
+              !jugador.eliminado &&
+              jugador.usuario != sala.jugadorDesconectado &&
+              ahora.difference(jugador.ultimaActividad) < _limiteInactividad,
+        )
+        .toList();
+
+void _finalizarTurnoSiTodosEnviaron(_Sala sala) {
+  final activos = _jugadoresActivos(sala);
+  if (activos.isEmpty || !activos.every((jugador) => jugador.envioRonda)) {
+    return;
+  }
+  sala.ronda++;
+  sala.dados = _tirarDados();
+  for (final jugador in activos) {
+    jugador.envioRonda = false;
+  }
+}
+
+void _continuarSinJugadorDesconectado(_Sala sala) {
+  final desconectado = sala.jugadorDesconectado;
+  if (desconectado == null) return;
+  sala.jugadores[desconectado]!.eliminado = true;
+  sala.jugadorDesconectado = null;
+  sala.limitePausa = null;
+  sala.votosContinuar.clear();
+
+  final activos = _jugadoresActivos(sala);
+  if (activos.length == 1) {
+    sala.fase = 'finalizada';
+    sala.ganador = activos.single.usuario;
+    return;
+  }
+  _finalizarTurnoSiTodosEnviaron(sala);
+}
+
+void _verificarPresencia(
+  _Sala sala,
+  String usuario,
+  DateTime ahora,
+) {
+  if (sala.limitePausa != null && !ahora.isBefore(sala.limitePausa!)) {
+    _continuarSinJugadorDesconectado(sala);
+  }
+
+  final jugador = sala.jugadores[usuario];
+  if (jugador != null && !jugador.eliminado) {
+    jugador.ultimaActividad = ahora;
+    if (sala.jugadorDesconectado == usuario) {
+      sala.jugadorDesconectado = null;
+      sala.limitePausa = null;
+      sala.votosContinuar.clear();
+    }
+  }
+
+  if (sala.fase != 'partida' || sala.jugadorDesconectado != null) return;
+  for (final miembro in _jugadoresActivos(sala)) {
+    if (ahora.difference(miembro.ultimaActividad) >= _limiteInactividad) {
+      sala.jugadorDesconectado = miembro.usuario;
+      sala.limitePausa = ahora.add(_tiempoEsperaDesconexion);
+      sala.votosContinuar.clear();
+      return;
+    }
+  }
 }
 
 int _puntajeJugador(_Sala sala, String usuario) {
@@ -391,7 +490,9 @@ bool _esTableroInicialValido(int nivel, List<dynamic> tablero) {
   return true;
 }
 
-void registerRoomRoutes(Router app) {
+void registerRoomRoutes(Router app, {DateTime Function()? clock}) {
+  final ahora = clock ?? DateTime.now;
+
   app.post('/api/rooms/create', (Request request) async {
     final usuario = _usuarioAutenticado(request);
     if (usuario == null) return _jsonResponse(401, {'error': 'No autenticado'});
@@ -403,10 +504,10 @@ void registerRoomRoutes(Router app) {
     }
 
     final codigo = _nuevoCodigoSala();
-    final sala = _Sala(codigo: codigo, nivel: nivel, anfitrion: usuario);
-    sala.jugadores[usuario] = _JugadorSala(usuario);
+    final sala =
+        _Sala(codigo: codigo, nivel: nivel, anfitrion: usuario, ahora: ahora());
     _salas[codigo] = sala;
-    return _jsonResponse(201, _salaJson(sala, usuario));
+    return _jsonResponse(201, _salaJson(sala, usuario, ahora: ahora()));
   });
 
   app.post('/api/rooms/join', (Request request) async {
@@ -427,8 +528,9 @@ void registerRoomRoutes(Router app) {
     if (!sala.jugadores.containsKey(usuario) && sala.jugadores.length >= 4) {
       return _jsonResponse(409, {'error': 'La sala está completa'});
     }
-    sala.jugadores.putIfAbsent(usuario, () => _JugadorSala(usuario));
-    return _jsonResponse(200, _salaJson(sala, usuario));
+    sala.jugadores.putIfAbsent(usuario, () => _JugadorSala(usuario, ahora()));
+    _verificarPresencia(sala, usuario, ahora());
+    return _jsonResponse(200, _salaJson(sala, usuario, ahora: ahora()));
   });
 
   app.get('/api/rooms/<code>', (Request request, String code) async {
@@ -440,7 +542,8 @@ void registerRoomRoutes(Router app) {
     if (!sala.jugadores.containsKey(usuario)) {
       return _jsonResponse(403, {'error': 'No perteneces a esta sala'});
     }
-    return _jsonResponse(200, _salaJson(sala, usuario));
+    _verificarPresencia(sala, usuario, ahora());
+    return _jsonResponse(200, _salaJson(sala, usuario, ahora: ahora()));
   });
 
   app.post('/api/rooms/<code>/ready', (Request request, String code) async {
@@ -452,6 +555,10 @@ void registerRoomRoutes(Router app) {
     final jugador = sala.jugadores[usuario];
     if (jugador == null)
       return _jsonResponse(403, {'error': 'No perteneces a esta sala'});
+    _verificarPresencia(sala, usuario, ahora());
+    if (jugador.eliminado) {
+      return _jsonResponse(403, {'error': 'Ya no participas en esta partida'});
+    }
     if (sala.fase != 'preparacion') {
       return _jsonResponse(409, {'error': 'La preparación ya terminó'});
     }
@@ -463,7 +570,7 @@ void registerRoomRoutes(Router app) {
     }
     jugador.tablero = List<dynamic>.from(rawCells);
     jugador.listo = true;
-    return _jsonResponse(200, _salaJson(sala, usuario));
+    return _jsonResponse(200, _salaJson(sala, usuario, ahora: ahora()));
   });
 
   app.post('/api/rooms/<code>/start', (Request request, String code) async {
@@ -472,6 +579,10 @@ void registerRoomRoutes(Router app) {
     final sala = _salas[code.toUpperCase()];
     if (sala == null)
       return _jsonResponse(404, {'error': 'Sala no encontrada'});
+    if (!sala.jugadores.containsKey(usuario)) {
+      return _jsonResponse(403, {'error': 'No perteneces a esta sala'});
+    }
+    _verificarPresencia(sala, usuario, ahora());
     if (sala.anfitrion != usuario) {
       return _jsonResponse(403, {'error': 'Solo el anfitrión puede iniciar'});
     }
@@ -484,7 +595,7 @@ void registerRoomRoutes(Router app) {
     sala.fase = 'partida';
     sala.ronda = 1;
     sala.dados = _tirarDados();
-    return _jsonResponse(200, _salaJson(sala, usuario));
+    return _jsonResponse(200, _salaJson(sala, usuario, ahora: ahora()));
   });
 
   app.post('/api/rooms/<code>/move', (Request request, String code) async {
@@ -496,6 +607,13 @@ void registerRoomRoutes(Router app) {
     final jugador = sala.jugadores[usuario];
     if (jugador == null)
       return _jsonResponse(403, {'error': 'No perteneces a esta sala'});
+    _verificarPresencia(sala, usuario, ahora());
+    if (jugador.eliminado) {
+      return _jsonResponse(403, {'error': 'Ya no participas en esta partida'});
+    }
+    if (sala.jugadorDesconectado != null) {
+      return _jsonResponse(409, {'error': 'La partida está pausada'});
+    }
     if (sala.fase != 'partida') {
       return _jsonResponse(409, {'error': 'La partida no está activa'});
     }
@@ -585,15 +703,47 @@ void registerRoomRoutes(Router app) {
         );
       }
     }
-    if (sala.jugadores.values.every((member) => member.envioRonda)) {
-      sala.ronda++;
-      sala.dados = _tirarDados();
-      for (final member in sala.jugadores.values) {
-        member.envioRonda = false;
-      }
-    }
-    return _jsonResponse(200, _salaJson(sala, usuario));
+    _finalizarTurnoSiTodosEnviaron(sala);
+    return _jsonResponse(200, _salaJson(sala, usuario, ahora: ahora()));
   });
+
+  app.post(
+    '/api/rooms/<code>/continue',
+    (Request request, String code) async {
+      final usuario = _usuarioAutenticado(request);
+      if (usuario == null) {
+        return _jsonResponse(401, {'error': 'No autenticado'});
+      }
+      final sala = _salas[code.toUpperCase()];
+      if (sala == null) {
+        return _jsonResponse(404, {'error': 'Sala no encontrada'});
+      }
+      final jugador = sala.jugadores[usuario];
+      if (jugador == null) {
+        return _jsonResponse(403, {'error': 'No perteneces a esta sala'});
+      }
+      final instante = ahora();
+      _verificarPresencia(sala, usuario, instante);
+      if (sala.jugadorDesconectado == null) {
+        return _jsonResponse(409, {'error': 'La pausa ya terminó'});
+      }
+      if (jugador.eliminado || jugador.usuario == sala.jugadorDesconectado) {
+        return _jsonResponse(
+          403,
+          {'error': 'No puedes votar para continuar esta partida'},
+        );
+      }
+      sala.votosContinuar.add(usuario);
+      final votantes = _votantesActivos(sala, instante);
+      if (votantes.isNotEmpty &&
+          votantes.every(
+            (votante) => sala.votosContinuar.contains(votante.usuario),
+          )) {
+        _continuarSinJugadorDesconectado(sala);
+      }
+      return _jsonResponse(200, _salaJson(sala, usuario, ahora: ahora()));
+    },
+  );
 
   app.post('/api/rooms/<code>/leave', (Request request, String code) async {
     final usuario = _usuarioAutenticado(request);

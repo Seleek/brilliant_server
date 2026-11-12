@@ -11,10 +11,11 @@ import '../bin/server.dart';
 void main() {
   late HttpServer server;
   final client = HttpClient();
+  DateTime? horaPrueba;
 
   setUpAll(() async {
     final router = Router();
-    registerRoomRoutes(router);
+    registerRoomRoutes(router, clock: () => horaPrueba ?? DateTime.now());
     server = await shelf_io.serve(router.call, InternetAddress.loopbackIPv4, 0);
   });
 
@@ -267,6 +268,248 @@ void main() {
     expect(guestMove['scores']['score-host'], 3);
     expect(guestMove['scores']['score-guest'], 2);
   });
+
+  test('la votación unánime termina la partida de dos jugadores', () async {
+    horaPrueba = DateTime.utc(2026, 1, 1);
+    addTearDown(() => horaPrueba = null);
+    final (code, tokens) = await _crearPartida(
+      client,
+      server,
+      const ['disconnect-host', 'disconnect-guest'],
+    );
+
+    horaPrueba = horaPrueba!.add(const Duration(seconds: 61));
+    final (pauseStatus, pause) = await _request(
+      client,
+      server,
+      'GET',
+      '/api/rooms/$code',
+      token: tokens['disconnect-host'],
+    );
+    expect(pauseStatus, 200);
+    expect(pause['paused'], isTrue);
+    expect(pause['disconnectedUsername'], 'disconnect-guest');
+
+    final (moveWhilePausedStatus, _) = await _request(
+      client,
+      server,
+      'POST',
+      '/api/rooms/$code/move',
+      token: tokens['disconnect-host'],
+      body: {'cells': _initialCells(), 'passed': true},
+    );
+    expect(moveWhilePausedStatus, 409);
+
+    final (voteStatus, result) = await _request(
+      client,
+      server,
+      'POST',
+      '/api/rooms/$code/continue',
+      token: tokens['disconnect-host'],
+      body: const {},
+    );
+    expect(voteStatus, 200);
+    expect(result['phase'], 'finalizada');
+    expect(result['winner'], 'disconnect-host');
+    final guest = (result['players'] as List)
+        .cast<Map<String, dynamic>>()
+        .firstWhere((player) => player['username'] == 'disconnect-guest');
+    expect(guest['eliminated'], isTrue);
+    expect(guest['score'], 0);
+
+    final (moveStatus, _) = await _request(
+      client,
+      server,
+      'POST',
+      '/api/rooms/$code/move',
+      token: tokens['disconnect-guest'],
+      body: {'cells': _initialCells(), 'passed': true},
+    );
+    expect(moveStatus, 403);
+  });
+
+  test('todos los jugadores conectados deben votar para continuar', () async {
+    horaPrueba = DateTime.utc(2026, 1, 15);
+    addTearDown(() => horaPrueba = null);
+    final (code, tokens) = await _crearPartida(
+      client,
+      server,
+      const ['vote-host', 'vote-guest', 'vote-other'],
+    );
+
+    horaPrueba = horaPrueba!.add(const Duration(seconds: 59));
+    await _request(
+      client,
+      server,
+      'GET',
+      '/api/rooms/$code',
+      token: tokens['vote-other'],
+    );
+    horaPrueba = horaPrueba!.add(const Duration(seconds: 2));
+    await _request(
+      client,
+      server,
+      'GET',
+      '/api/rooms/$code',
+      token: tokens['vote-host'],
+    );
+
+    final (_, primerVoto) = await _request(
+      client,
+      server,
+      'POST',
+      '/api/rooms/$code/continue',
+      token: tokens['vote-host'],
+      body: const {},
+    );
+    expect(primerVoto['paused'], isTrue);
+    expect(primerVoto['phase'], 'partida');
+
+    final (segundoStatus, resultado) = await _request(
+      client,
+      server,
+      'POST',
+      '/api/rooms/$code/continue',
+      token: tokens['vote-other'],
+      body: const {},
+    );
+    expect(segundoStatus, 200);
+    expect(resultado['paused'], isFalse);
+    expect(resultado['phase'], 'partida');
+    expect(resultado['winner'], isNull);
+  });
+
+  test('el jugador puede volver antes de los cinco minutos', () async {
+    horaPrueba = DateTime.utc(2026, 2, 1);
+    addTearDown(() => horaPrueba = null);
+    final (code, tokens) = await _crearPartida(
+      client,
+      server,
+      const ['reconnect-host', 'reconnect-guest', 'reconnect-other'],
+    );
+
+    horaPrueba = horaPrueba!.add(const Duration(seconds: 59));
+    await _request(
+      client,
+      server,
+      'GET',
+      '/api/rooms/$code',
+      token: tokens['reconnect-other'],
+    );
+    horaPrueba = horaPrueba!.add(const Duration(seconds: 2));
+    await _request(
+      client,
+      server,
+      'GET',
+      '/api/rooms/$code',
+      token: tokens['reconnect-host'],
+    );
+    final (_, voted) = await _request(
+      client,
+      server,
+      'POST',
+      '/api/rooms/$code/continue',
+      token: tokens['reconnect-host'],
+      body: const {},
+    );
+    expect(voted['paused'], isTrue);
+    expect(voted['players'][0]['votedToContinue'], isTrue);
+
+    final (resumeStatus, resumed) = await _request(
+      client,
+      server,
+      'GET',
+      '/api/rooms/$code',
+      token: tokens['reconnect-guest'],
+    );
+    expect(resumeStatus, 200);
+    expect(resumed['paused'], isFalse);
+    expect(resumed['players'][0]['votedToContinue'], isFalse);
+    expect(resumed['players'][1]['eliminated'], isFalse);
+  });
+
+  test('al vencer los cinco minutos continúa sin unanimidad', () async {
+    horaPrueba = DateTime.utc(2026, 3, 1);
+    addTearDown(() => horaPrueba = null);
+    final (code, tokens) = await _crearPartida(
+      client,
+      server,
+      const ['timeout-host', 'timeout-guest'],
+    );
+
+    horaPrueba = horaPrueba!.add(const Duration(seconds: 61));
+    final (_, paused) = await _request(
+      client,
+      server,
+      'GET',
+      '/api/rooms/$code',
+      token: tokens['timeout-host'],
+    );
+    expect(paused['paused'], isTrue);
+    horaPrueba = horaPrueba!.add(const Duration(minutes: 5));
+
+    final (timeoutStatus, result) = await _request(
+      client,
+      server,
+      'GET',
+      '/api/rooms/$code',
+      token: tokens['timeout-host'],
+    );
+    expect(timeoutStatus, 200);
+    expect(result['paused'], isFalse);
+    expect(result['phase'], 'finalizada');
+    expect(result['winner'], 'timeout-host');
+  });
+}
+
+Future<(String, Map<String, String>)> _crearPartida(
+  HttpClient client,
+  HttpServer server,
+  List<String> usuarios,
+) async {
+  final tokens = {
+    for (final usuario in usuarios)
+      usuario: JWT({'sub': usuario}).sign(SecretKey(jwtSecret)),
+  };
+  final (_, creada) = await _request(
+    client,
+    server,
+    'POST',
+    '/api/rooms/create',
+    token: tokens[usuarios.first],
+    body: {'level': 1},
+  );
+  final code = creada['code'] as String;
+
+  for (final usuario in usuarios.skip(1)) {
+    await _request(
+      client,
+      server,
+      'POST',
+      '/api/rooms/join',
+      token: tokens[usuario],
+      body: {'code': code},
+    );
+  }
+  for (final usuario in usuarios) {
+    await _request(
+      client,
+      server,
+      'POST',
+      '/api/rooms/$code/ready',
+      token: tokens[usuario],
+      body: {'cells': _initialCells()},
+    );
+  }
+  final (startStatus, _) = await _request(
+    client,
+    server,
+    'POST',
+    '/api/rooms/$code/start',
+    token: tokens[usuarios.first],
+  );
+  expect(startStatus, 200);
+  return (code, tokens);
 }
 
 List<int?> _initialCells([int level = 1]) {
