@@ -153,6 +153,33 @@ Response _jsonResponse(
       headers: {'content-type': 'application/json'},
     );
 
+Future<RawDatagramSocket> startLanDiscovery({
+  int port = 8080,
+  InternetAddress? address,
+}) async {
+  final socket = await RawDatagramSocket.bind(
+    address ?? InternetAddress.anyIPv4,
+    port,
+  );
+  socket.listen((event) {
+    if (event != RawSocketEvent.read) return;
+
+    final datagram = socket.receive();
+    if (datagram == null) return;
+    if (utf8.decode(datagram.data, allowMalformed: true) !=
+        'BRILLIANT_DISCOVER_V1') {
+      return;
+    }
+
+    socket.send(
+      utf8.encode('BRILLIANT_SERVER_V1'),
+      datagram.address,
+      datagram.port,
+    );
+  });
+  return socket;
+}
+
 Future<Map<String, dynamic>?> _jsonBody(Request request) async {
   try {
     final decoded = jsonDecode(await request.readAsString());
@@ -930,5 +957,7 @@ void main() async {
 
   final server = await io.serve(handler, InternetAddress.anyIPv4, 8080);
   print('Servidor corriendo en http://${server.address.host}:${server.port}');
+  await startLanDiscovery();
+  print('Descubrimiento LAN habilitado en UDP 8080');
   printConectados();
 }
