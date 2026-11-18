@@ -256,6 +256,7 @@ List<_JugadorSala> _votantesActivos(_Sala sala, DateTime ahora) =>
         .toList();
 
 void _finalizarTurnoSiTodosEnviaron(_Sala sala) {
+  if (sala.fase != 'partida') return;
   final activos = _jugadoresActivos(sala);
   if (activos.isEmpty || !activos.every((jugador) => jugador.envioRonda)) {
     return;
@@ -329,6 +330,27 @@ int _puntajeJugador(_Sala sala, String usuario) {
     }
   }
   return total;
+}
+
+int puntajeNecesarioParaGanar(int cantidadJugadores) =>
+    switch (cantidadJugadores) {
+      2 => 26,
+      3 => 24,
+      4 => 22,
+      5 => 20,
+      _ => throw ArgumentError.value(
+          cantidadJugadores,
+          'cantidadJugadores',
+          'Debe estar entre 2 y 5',
+        ),
+    };
+
+void _finalizarSiHayGanador(_Sala sala, String usuario) {
+  if (_puntajeJugador(sala, usuario) >=
+      puntajeNecesarioParaGanar(sala.jugadores.length)) {
+    sala.fase = 'finalizada';
+    sala.ganador = usuario;
+  }
 }
 
 int _puntosDeZona(int nivel, String color, int puesto) {
@@ -552,7 +574,7 @@ void registerRoomRoutes(Router app, {DateTime Function()? clock}) {
     if (sala.fase != 'preparacion') {
       return _jsonResponse(409, {'error': 'La partida ya comenzó'});
     }
-    if (!sala.jugadores.containsKey(usuario) && sala.jugadores.length >= 4) {
+    if (!sala.jugadores.containsKey(usuario) && sala.jugadores.length >= 5) {
       return _jsonResponse(409, {'error': 'La sala está completa'});
     }
     sala.jugadores.putIfAbsent(usuario, () => _JugadorSala(usuario, ahora()));
@@ -730,6 +752,7 @@ void registerRoomRoutes(Router app, {DateTime Function()? clock}) {
         );
       }
     }
+    _finalizarSiHayGanador(sala, usuario);
     _finalizarTurnoSiTodosEnviaron(sala);
     return _jsonResponse(200, _salaJson(sala, usuario, ahora: ahora()));
   });

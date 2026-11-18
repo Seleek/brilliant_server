@@ -24,14 +24,15 @@ void main() {
     await server.close(force: true);
   });
 
-  test('crea y sincroniza una sala de hasta cuatro jugadores', () async {
+  test('crea y sincroniza una sala de hasta cinco jugadores', () async {
     final tokens = {
       for (final username in [
         'host',
         'player2',
         'player3',
         'player4',
-        'player5'
+        'player5',
+        'player6',
       ])
         username: JWT({'sub': username}).sign(SecretKey(jwtSecret)),
     };
@@ -47,7 +48,7 @@ void main() {
     expect(createStatus, 201);
     final code = created['code'] as String;
 
-    for (final username in ['player2', 'player3', 'player4']) {
+    for (final username in ['player2', 'player3', 'player4', 'player5']) {
       final (status, _) = await _request(
         client,
         server,
@@ -64,7 +65,7 @@ void main() {
       server,
       'POST',
       '/api/rooms/join',
-      token: tokens['player5'],
+      token: tokens['player6'],
       body: {'code': code},
     );
     expect(fullStatus, 409);
@@ -89,7 +90,13 @@ void main() {
     );
     expect(invalidBoardStatus, 400);
 
-    for (final username in ['host', 'player2', 'player3', 'player4']) {
+    for (final username in [
+      'host',
+      'player2',
+      'player3',
+      'player4',
+      'player5',
+    ]) {
       final (status, _) = await _request(
         client,
         server,
@@ -129,7 +136,7 @@ void main() {
     );
     expect(noTokenStatus, 401);
 
-    final finishers = ['host', 'player2', 'player3'];
+    final finishers = ['host', 'player2', 'player3', 'player4'];
     for (final username in finishers) {
       final (status, response) = await _request(
         client,
@@ -156,7 +163,7 @@ void main() {
       server,
       'POST',
       '/api/rooms/$code/move',
-      token: tokens['player4'],
+      token: tokens['player5'],
       body: {
         'cells': _initialCells(),
         'passed': true,
@@ -167,6 +174,15 @@ void main() {
     expect(finalMove['round'], 2);
     expect(finalMove['dice'], hasLength(2));
     expect(finalMove['allSubmitted'], isFalse);
+  });
+
+  test('la meta de victoria depende del número de jugadores', () {
+    expect(puntajeNecesarioParaGanar(5), 20);
+    expect(puntajeNecesarioParaGanar(4), 22);
+    expect(puntajeNecesarioParaGanar(3), 24);
+    expect(puntajeNecesarioParaGanar(2), 26);
+    expect(() => puntajeNecesarioParaGanar(1), throwsArgumentError);
+    expect(() => puntajeNecesarioParaGanar(6), throwsArgumentError);
   });
 
   test('el servidor calcula los puestos de una zona verde válida', () async {
